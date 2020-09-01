@@ -34,7 +34,6 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 
 import cn.dxl.common.R;
-import cn.dxl.common.util.IOUtils;
 
 /*
  * 一系列文件操作的封装!
@@ -202,6 +201,10 @@ public class FileUtils {
         return mime;
     }
 
+    public static boolean isFile(String file) {
+        return new File(file).isFile();
+    }
+
     //删除文件夹目录下所有的文件
     public static boolean delete(File dir) {
         if (dir.isDirectory()) {
@@ -219,6 +222,83 @@ public class FileUtils {
             return delete(dir);
         } else {
             return dir.delete();
+        }
+    }
+
+    public static boolean move(File file, File path) {
+        String pathStr = path.getAbsolutePath();
+        pathStr = pathStr.endsWith(File.separator) ? pathStr : pathStr + File.separator;
+        String targetFile = pathStr + file.getName();
+        File tmp = new File(targetFile);
+        createFile(tmp);
+        if (tmp.exists() && tmp.isFile()) {
+            // 开始写入!
+            return file.renameTo(new File(targetFile));
+        }
+        return true;
+    }
+
+    public static boolean copy(Uri source, File target) {
+        return copy(source, Uri.fromFile(target));
+    }
+
+    public static boolean copy(Uri source, Uri target) {
+        try {
+            byte[] data = readBytes(source);
+            writeBytes(data, target);
+            return true;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public static boolean copy(File source, File target) {
+        if (target == null || source == null) return false;
+        FileChannel inputChannel = null;
+        FileChannel outputChannel = null;
+        try {
+            File parentFile = target.getParentFile();
+            if (parentFile != null) {
+                createPaths(parentFile);
+            }
+            createFile(target);
+            inputChannel = new FileInputStream(source).getChannel();
+            outputChannel = new FileOutputStream(target).getChannel();
+            outputChannel.transferFrom(inputChannel, 0, inputChannel.size());
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            IOUtils.close(inputChannel);
+            IOUtils.close(outputChannel);
+        }
+        return true;
+    }
+
+    public static boolean copy(FileDescriptor descriptor, FileDescriptor target) {
+        if (target == null || descriptor == null) return false;
+        FileChannel inputChannel = null;
+        FileChannel outputChannel = null;
+        try {
+            inputChannel = new FileInputStream(descriptor).getChannel();
+            outputChannel = new FileOutputStream(target).getChannel();
+            outputChannel.transferFrom(inputChannel, 0, inputChannel.size());
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            IOUtils.close(inputChannel);
+            IOUtils.close(outputChannel);
+        }
+        return true;
+    }
+
+    public static boolean copy(byte[] rawData, File target) {
+        try {
+            writeBytes(rawData, target, false);
+            return true;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
         }
     }
 
@@ -274,43 +354,52 @@ public class FileUtils {
 
     private static String getFilePathByUri_BELOWAPI11(Uri uri) {
         // 以 content:// 开头的，比如 content://media/extenral/images/media/17766
-        if (ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())) {
-            String path = null;
-            String[] projection = new String[]{MediaStore.Images.Media.DATA};
-            Cursor cursor = context.getContentResolver().query(uri, projection, null, null, null);
+        try {
+            if (ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())) {
+                String path = null;
+                String[] projection = new String[]{MediaStore.Images.Media.DATA};
+                Cursor cursor = context.getContentResolver().query(uri, projection, null, null, null);
+                if (cursor != null) {
+                    if (cursor.moveToFirst()) {
+                        try {
+                            int columnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+                            if (columnIndex > -1) {
+                                path = cursor.getString(columnIndex);
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    cursor.close();
+                }
+                return path;
+            }
+        } catch (Exception e) {
+            return null;
+        }
+        return null;
+    }
+
+    private static String getFilePathByUri_API11to18(Uri contentUri) {
+        String result = null;
+        try {
+            String[] projection = {MediaStore.Images.Media.DATA};
+
+            CursorLoader cursorLoader = new CursorLoader(context, contentUri, projection, null, null, null);
+            Cursor cursor = cursorLoader.loadInBackground();
             if (cursor != null) {
                 if (cursor.moveToFirst()) {
                     try {
-                        int columnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
-                        if (columnIndex > -1) {
-                            path = cursor.getString(columnIndex);
-                        }
+                        int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+                        result = cursor.getString(column_index);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
                 }
                 cursor.close();
             }
-            return path;
-        }
-        return null;
-    }
-
-    private static String getFilePathByUri_API11to18(Uri contentUri) {
-        String[] projection = {MediaStore.Images.Media.DATA};
-        String result = null;
-        CursorLoader cursorLoader = new CursorLoader(context, contentUri, projection, null, null, null);
-        Cursor cursor = cursorLoader.loadInBackground();
-        if (cursor != null) {
-            if (cursor.moveToFirst()) {
-                try {
-                    int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
-                    result = cursor.getString(column_index);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-            cursor.close();
+        } catch (Exception e) {
+            return null;
         }
         return result;
     }
@@ -462,6 +551,10 @@ public class FileUtils {
 
     public static boolean createFile(File file) {
         try {
+            File tmpParent = file.getParentFile();
+            if (tmpParent != null && !tmpParent.exists()) {
+                createPaths(tmpParent);
+            }
             if (!file.exists())
                 if (file.createNewFile()) return true;
         } catch (IOException e) {
@@ -513,75 +606,15 @@ public class FileUtils {
         return ret;
     }
 
-    //判断文件名是否有效!
     public static boolean isValidFileName(String name) {
         return !StringUtil.isEmpty(name) && !name.contains("/");
     }
 
-    //获得so库的地址!
     public static String getNativePath() {
         String ss = context.getApplicationInfo().nativeLibraryDir;
         if (ss == null)
             ss = context.getFilesDir().getPath() + "/lib";
         return ss;
-    }
-
-    public static boolean moveFile(File file, File path) {
-        String pathStr = path.getAbsolutePath();
-        pathStr = pathStr.endsWith(File.separator) ? pathStr : pathStr + File.separator;
-        String targetFile = pathStr + file.getName();
-        File tmp = new File(targetFile);
-        createFile(tmp);
-        if (tmp.exists() && tmp.isFile()) {
-            // 开始写入!
-            return file.renameTo(new File(targetFile));
-        }
-        return true;
-    }
-
-    public static boolean copy(File source, File target) throws IOException {
-        if (target == null || source == null) return false;
-        FileChannel inputChannel = null;
-        FileChannel outputChannel = null;
-        try {
-            File parentFile = target.getParentFile();
-            if (parentFile != null) {
-                createPaths(parentFile);
-            }
-            createFile(target);
-            inputChannel = new FileInputStream(source).getChannel();
-            outputChannel = new FileOutputStream(target).getChannel();
-            outputChannel.transferFrom(inputChannel, 0, inputChannel.size());
-        } finally {
-            IOUtils.close(inputChannel);
-            IOUtils.close(outputChannel);
-        }
-        return true;
-    }
-
-    public static boolean copy(FileDescriptor descriptor, FileDescriptor target) throws IOException {
-        if (target == null || descriptor == null) return false;
-        FileChannel inputChannel = null;
-        FileChannel outputChannel = null;
-        try {
-            inputChannel = new FileInputStream(descriptor).getChannel();
-            outputChannel = new FileOutputStream(target).getChannel();
-            outputChannel.transferFrom(inputChannel, 0, inputChannel.size());
-        } finally {
-            IOUtils.close(inputChannel);
-            IOUtils.close(outputChannel);
-        }
-        return true;
-    }
-
-    public static boolean copy(byte[] rawData, File target) {
-        try {
-            writeBytes(rawData, target, false);
-            return true;
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
     }
 
     public static String getFileCountIfFolder(File[] files) {

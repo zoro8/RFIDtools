@@ -3,16 +3,15 @@ package cn.rrg.rdv.util;
 import android.content.Context;
 import android.util.Log;
 
+import com.termux.app.TermuxActivity;
+import com.termux.app.TermuxService;
+
 import java.io.File;
 import java.io.IOException;
 
 import cn.rrg.rdv.settings.BaseSetting;
 import cn.rrg.rdv.settings.ChameleonSlotAliasesSetting;
 import cn.rrg.rdv.settings.ChameleonSlotAliasesStatusSetting;
-import cn.rrg.rdv.settings.CommonRWKeyFilesSelectedSettings;
-import cn.rrg.rdv.settings.LanguageSettings;
-import cn.rrg.rdv.settings.MainPageColumnCountSetting;
-import cn.rrg.rdv.settings.Proxmark3ConsleDelaySetting;
 import cn.dxl.common.util.AssetsUtil;
 import cn.dxl.common.util.DiskKVUtil;
 
@@ -72,17 +71,14 @@ public class InitUtil {
             if (!pm3_dir.mkdirs()) {
                 Log.d(LOG_TAG, "init pm3 dir fail!");
             } else {
-                initProxmark3RDV4ImageFile(au);
                 initEasyButtonFile(au);
                 initPM3ForwardFile();
-                initHardnestedFile(au);
             }
         } else {
-            initProxmark3RDV4ImageFile(au);
             initEasyButtonFile(au);
             initPM3ForwardFile();
-            initHardnestedFile(au);
         }
+        Commons.updatePM3Cwd();
     }
 
     private static void initCommonInFile() {
@@ -99,27 +95,14 @@ public class InitUtil {
         }
     }
 
-    private static void initProxmark3RDV4ImageFile(AssetsUtil au) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                //初始化标准输入的文件!
-                File boot = new File(Paths.PM3_IMAGE_BOOT_FILE);
-                File os = new File(Paths.PM3_IMAGE_OS_FILE);
-                au.moveFile(Paths.PM3_BOOT_FILE_NAME, boot.getAbsolutePath());
-                au.moveFile(Paths.PM3_OS_FILE_NAME, os.getAbsolutePath());
-            }
-        }).start();
-    }
-
     private static void initMfInfoMapsFile(AssetsUtil au) {
         File f1 = new File(Paths.COMMON_DIRECTORY + "/" + "template_mifare_info_en.html");
         File f2 = new File(Paths.COMMON_DIRECTORY + "/" + "template_tag_info_en.html");
 
         //移动两个标签信息HTML文件到指定目录!
-        au.moveFile("template_mifare_info_en.html",
+        au.copyFile("template_mifare_info_en.html",
                 new File(Paths.COMMON_DIRECTORY + "/" + "template_mifare_info_en.html").getAbsolutePath());
-        au.moveFile("template_tag_info_en.html",
+        au.copyFile("template_tag_info_en.html",
                 new File(Paths.COMMON_DIRECTORY + "/" + "template_tag_info_en.html").getAbsolutePath());
     }
 
@@ -128,10 +111,8 @@ public class InitUtil {
         //目标文件夹里是否有这个文件!
         if (!(target.exists() && target.isFile())) {
             //包里面是否有这个资源文件!
-            if (au.isFileExists(Paths.DEFAULT_DUMP_NAME)) {
-                if (au.moveFile(Paths.DEFAULT_DUMP_NAME, Paths.DEFAULT_DUMP_FILE)) {
-                    Log.d(LOG_TAG, "创建默认的空白数据文件成功!");
-                }
+            if (au.copyFile(Paths.DEFAULT_DUMP_NAME, Paths.DEFAULT_DUMP_FILE)) {
+                Log.d(LOG_TAG, "创建默认的空白数据文件成功!");
             }
         }
     }
@@ -141,10 +122,8 @@ public class InitUtil {
         //目标文件夹里是否有这个文件!
         if (!(target.exists() && target.isFile())) {
             //包里面是否有这个资源文件!
-            if (au.isFileExists(Paths.DEFAULT_KEYS_NAME)) {
-                if (au.moveFile(Paths.DEFAULT_KEYS_NAME, Paths.DEFAULT_KEYS_FILE)) {
-                    Log.d(LOG_TAG, "创建默认的空白数据文件成功!");
-                }
+            if (au.copyFile(Paths.DEFAULT_KEYS_NAME, Paths.DEFAULT_KEYS_FILE)) {
+                Log.d(LOG_TAG, "创建默认的空白数据文件成功!");
             }
         }
     }
@@ -154,10 +133,8 @@ public class InitUtil {
         //目标文件夹里是否有这个文件!
         if (!(target.exists() && target.isFile())) {
             //包里面是否有这个资源文件!
-            if (au.isFileExists(Paths.DEFAULT_CMD_NAME)) {
-                if (au.moveFile(Paths.DEFAULT_CMD_NAME, Paths.PM3_CMD_FILE)) {
-                    Log.d(LOG_TAG, "创建默认的动态按钮文件成功!");
-                }
+            if (au.copyFile(Paths.DEFAULT_CMD_NAME, Paths.PM3_CMD_FILE)) {
+                Log.d(LOG_TAG, "创建默认的动态按钮文件成功!");
             }
         }
     }
@@ -171,58 +148,6 @@ public class InitUtil {
             pm3_forward_e.createNewFile();
         } catch (IOException e) {
             e.printStackTrace();
-        }
-    }
-
-    private static void initHardnestedFile(AssetsUtil au) {
-        File pm3_hardnested_dir = new File(Paths.PM3_HARDNESTED_DIRECTORY);
-        if (!pm3_hardnested_dir.exists()) {
-            if (!pm3_hardnested_dir.mkdirs()) {
-            } else {
-                initHardnestedBinFile(au);
-            }
-        } else {
-            initHardnestedBinFile(au);
-        }
-        File pm3_hardnested_tables_dir = new File(Paths.PM3_HARDNESTED_TABLES_DIRECTORY);
-        if (!pm3_hardnested_tables_dir.exists()) {
-            if (pm3_hardnested_tables_dir.mkdirs()) {
-                initHardnestedNoncesFile(au);
-            }
-        } else {
-            initHardnestedNoncesFile(au);
-        }
-    }
-
-    private static void initHardnestedBinFile(AssetsUtil au) {
-        File targetFile = new File(Paths.PM3_HARDNESTED_DIRECTORY + "/" + "bf_bench_data.bin");
-        if (targetFile.exists()) {
-            return;
-        }
-        //移动bench文件!
-        au.moveFile(
-                Paths.HARDNESTED_PATH + "/" + "bf_bench_data.bin", //要移动的文件!
-                targetFile.getAbsolutePath()  //目标目录与文件名!
-        );
-    }
-
-    private static void initHardnestedNoncesFile(AssetsUtil au) {
-        //pm3的随机数种子文件，判断文件数量，如果小于0，就进行拷贝!
-        File tmpFile = new File(Paths.PM3_HARDNESTED_TABLES_DIRECTORY);
-        int size = tmpFile.list().length;
-        if (size > 0) {
-            return;
-        }
-        String tmpTablesPath = Paths.HARDNESTED_PATH + "/" + Paths.TABLES_PATH;
-        String[] files = au.getFiles(tmpTablesPath);
-        if (files != null) {
-            //进行最终的移动!
-            for (String f : files) {
-                au.moveFile(
-                        tmpTablesPath + "/" + f,
-                        Paths.PM3_HARDNESTED_TABLES_DIRECTORY + "/" + f
-                );
-            }
         }
     }
 
@@ -285,10 +210,6 @@ public class InitUtil {
         BaseSetting[] baseSettings = new BaseSetting[]{
                 new ChameleonSlotAliasesSetting(),
                 new ChameleonSlotAliasesStatusSetting(),
-                new MainPageColumnCountSetting(),
-                new Proxmark3ConsleDelaySetting(),
-                new LanguageSettings(),
-                new CommonRWKeyFilesSelectedSettings()
         };
         //迭代设置配置实现类，进行设置参数的初始化!
         for (BaseSetting setting : baseSettings) {

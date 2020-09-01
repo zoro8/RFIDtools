@@ -68,28 +68,18 @@ typedef struct {
 #define UART_FPC_CLIENT_RX_TIMEOUT_MS 200
 #define UART_TCP_CLIENT_RX_TIMEOUT_MS 500
 
-// see pm3_cmd.h
-struct timeval timeout = {
-        .tv_sec  = 0, // 0 second
-        .tv_usec = UART_FPC_CLIENT_RX_TIMEOUT_MS * 1000
-};
-
 uint32_t newtimeout_value = 0;
 bool newtimeout_pending = false;
 
 int uart_reconfigure_timeouts(uint32_t value) {
-
-    newtimeout_value = value;
     newtimeout_pending = true;
+    newtimeout_value = value;
     return NFC_SUCCESS;
 }
 
 serial_port uart_open(const char *pcPortName, uint32_t speed) {
     serial_port_unix *sp = calloc(sizeof(serial_port_unix), sizeof(uint8_t));
     if (sp == 0) return INVALID_SERIAL_PORT;
-
-    // init timeouts
-    timeout.tv_usec = UART_FPC_CLIENT_RX_TIMEOUT_MS * 1000;
 
     if (memcmp(pcPortName, "tcp:", 4) == 0) {
         struct addrinfo *addr = NULL, *rp;
@@ -100,8 +90,6 @@ serial_port uart_open(const char *pcPortName, uint32_t speed) {
             free(sp);
             return INVALID_SERIAL_PORT;
         }
-
-        timeout.tv_usec = UART_TCP_CLIENT_RX_TIMEOUT_MS * 1000;
 
         char *colon = strrchr(addrstr, ':');
         const char *portstr;
@@ -171,9 +159,6 @@ serial_port uart_open(const char *pcPortName, uint32_t speed) {
             free(sp);
             return INVALID_SERIAL_PORT;
         }
-
-        // we must use max timeout!
-        timeout.tv_usec = UART_TCP_CLIENT_RX_TIMEOUT_MS * 1000;
 
         size_t servernameLen = (strlen(pcPortName) - 7) + 1;
         char serverNameBuf[servernameLen];
@@ -295,20 +280,17 @@ void uart_close(const serial_port sp) {
 int uart_receive(const serial_port sp, uint8_t *pbtRx, uint32_t pszMaxRxLen, uint32_t *pszRxLen) {
     uint32_t byteCount;  // FIONREAD returns size on 32b
     fd_set rfds;
-    struct timeval tv;
 
-    if (newtimeout_pending) {
-        timeout.tv_usec = newtimeout_value * 1000;
-        newtimeout_pending = false;
-    }
     // Reset the output count
     *pszRxLen = 0;
     do {
         // Reset file descriptor
         FD_ZERO(&rfds);
         FD_SET(((serial_port_unix *) sp)->fd, &rfds);
-        tv = timeout;
-        int res = select(((serial_port_unix *) sp)->fd + 1, &rfds, NULL, NULL, &tv);
+
+        // int res = select(((serial_port_unix *) sp)->fd + 1, &rfds, NULL, NULL, NULL);
+        struct timeval timeval = {.tv_sec  = 3};
+        int res = select(((serial_port_unix *) sp)->fd + 1, &rfds, NULL, NULL, &timeval);
 
         // Read error
         if (res < 0) {
@@ -320,7 +302,7 @@ int uart_receive(const serial_port sp, uint8_t *pbtRx, uint32_t pszMaxRxLen, uin
         if (res == 0) {
             if (*pszRxLen == 0) {
                 // We received no data
-                // LOGD("We received no data");
+                LOGD("We received no data");
                 return NFC_ETIMEOUT;
             } else {
                 // We received some data, but nothing more is available
@@ -328,6 +310,8 @@ int uart_receive(const serial_port sp, uint8_t *pbtRx, uint32_t pszMaxRxLen, uin
                 return NFC_SUCCESS;
             }
         }
+
+        LOGD("Has data can received");
 
         // Retrieve the count of the incoming bytes
         res = ioctl(((serial_port_unix *) sp)->fd, FIONREAD, &byteCount);
@@ -346,7 +330,7 @@ int uart_receive(const serial_port sp, uint8_t *pbtRx, uint32_t pszMaxRxLen, uin
         // Stop if the OS has some troubles reading the data
         if (res <= 0) {
             return NFC_EIO;
-        } else if (res > 0 && pszMaxRxLen > 255) { // 只有USB通信下才有大于255个字节的通信请求
+        } else if (res > 0 && pszMaxRxLen >= 255) { // 只有USB通信下才有大于255个字节的通信请求
             *pszRxLen += res;
             /*
              * TODO Look me!
@@ -355,7 +339,7 @@ int uart_receive(const serial_port sp, uint8_t *pbtRx, uint32_t pszMaxRxLen, uin
              * The communication process of PM3 is very different from the implementation of libnfc
              * (libnfc always requires about 265 bytes of data).
              * If we keep blocking and waiting, the program will be very slow,
-             * so we need to return the data directly without waiting for enough 265 bytes.
+             * so we need to return the data directly without waiting for enough 255 bytes.
              *
              * 这个UART实现是从PM3的开源库里拷贝过来的。
              * PM3的通信过程跟LIBNFC的实现有非常大的区别（LIBNFC某些驱动实现总是要求255个字节左右的数据），
@@ -379,14 +363,13 @@ int uart_receive(const serial_port sp, uint8_t *pbtRx, uint32_t pszMaxRxLen, uin
 int uart_send(const serial_port sp, const uint8_t *pbtTx, const uint32_t len) {
     uint32_t pos = 0;
     fd_set rfds;
-    struct timeval tv;
 
     while (pos < len) {
         // Reset file descriptor
         FD_ZERO(&rfds);
         FD_SET(((serial_port_unix *) sp)->fd, &rfds);
-        tv = timeout;
-        int res = select(((serial_port_unix *) sp)->fd + 1, NULL, &rfds, NULL, &tv);
+        struct timeval timeval = {.tv_sec  = 3};
+        int res = select(((serial_port_unix *) sp)->fd + 1, NULL, &rfds, NULL, &timeval);
 
         // Write error
         if (res < 0) {

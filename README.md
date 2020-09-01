@@ -63,15 +63,32 @@ Download and flash [Compiled FW 12 August](https://www.dropbox.com/s/416lsrqpr2l
 - CMAKE: 3.10
 - NDK: 20.0.5594570
 
+## How to build?
+The RFIDTools have some gitsubmodule 
+
+Get the source from GitHub:
+
+      git clone https://github.com/xianglin1998/RFIDtools RFIDtools
+      cd RFIDtools
+      git submodule init
+      git submodule update 
+
+  
+After clone and init submodule, you can use your AndroidStudio open this project.  
+
 ## App core implementation
 
-If you want to join our project, you must comply with the following development specifications to some extent, including macro architecture and micro implementation. Let us have target time coding.
+Comunication: LocalSocket & LocalServerSocket(Android)
+    Linux api: socket & abstract namespace
+    
+Build: gradle & cmake
 
-- Communication implementation: using JNI mapping C & Java communication, encapsulating posix-compliant UART library, using Google API in the upper layer (Java) and posix-compliant UART in the lower layer (C/C+++).
+Framework: MVP
 
-- Console program: Android defaults stdin, stdout, stderr to / dev / null, so the console program will not get normal output, we need to redirect them to the correct path, such as pointing to the file / sdcard / forward. stdxx, core: function freopen (), defined by C stdio. h, can redirect the standard stream. To local file.
-
-- Program architecture: DXL programming complies with MVP, the core architecture uses MVP to achieve layering, all the underlying data is placed in Model, all UI actions are placed in View, and all data calls are placed in Presenter. Module is used to realize resource management, reusable, and separate business can be placed in separate modules to reduce coupling and achieve reuse. Replacing concrete implementation with abstraction achieves the effects of extracting public implementation, abstracting private implementation, Interface-oriented and abstract programming, such as PN53X and mobile phone NFC read-write card use same UI, and information display.
+Now all lib is compile to "libxxx.so",  jni and ndk is basic. core is jni and ndk from java to c map.  
+~~not a linux executable file(Future)~~  
+Now, proxmark3 client is a linux executable, the executable pack in: app_main/src/main/assets/proxmark3.zip  
+You can compile your client and use zip to pack client and update on app settings page(Future).  
 
 ## Compability list
 
@@ -89,6 +106,13 @@ The app has been tested with these Android phones.  Feel free to contribute with
 ## Support
 
 Open issues here relating to the source code,  other support questions use `android@rfidresearchgroup.com`
+
+## Dependents
+
+Thanks:
+
+- Terminal: [TERMUX](https://github.com/termux)
+- Communication: [UsbSerial](https://github.com/felHR85/UsbSerial) 
 
 ## Maintainer
 Feel free to contribute and make this app better!
